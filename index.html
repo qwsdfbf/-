@@ -1,0 +1,1759 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>HUNTER CHASE — リアル位置情報鬼ごっこ</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <style>
+    :root {
+      --bg-dark: #090d14;
+      --panel-bg: rgba(13, 19, 30, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --accent-blue: #00d2ff;
+      --accent-red: #ff2a4b;
+      --accent-amber: #ffae00;
+      --accent-green: #00e676;
+      --text-main: #f4f7fb;
+      --text-dim: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: #0b101b;
+    }
+
+    /* Danger red pulse vignette */
+    #danger-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 400;
+      opacity: 0;
+      box-shadow: inset 0 0 90px 28px rgba(255, 24, 58, 0.85);
+      transition: opacity 0.15s ease-out;
+    }
+
+    #danger-overlay.pulsing {
+      animation: dangerPulse var(--pulse-speed, 0.9s) infinite ease-in-out;
+    }
+
+    @keyframes dangerPulse {
+      0%, 100% { opacity: 0.22; }
+      50% { opacity: 0.95; }
+    }
+
+    /* Custom Leaflet markers */
+    .player-marker-wrap {
+      position: relative;
+      width: 24px;
+      height: 24px;
+    }
+    .player-dot {
+      position: absolute;
+      inset: 4px;
+      background: var(--accent-blue);
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 14px rgba(0, 210, 255, 0.95);
+      z-index: 2;
+    }
+    .player-pulse {
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      background: rgba(0, 210, 255, 0.38);
+      animation: playerPing 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+      z-index: 1;
+    }
+    @keyframes playerPing {
+      0% { transform: scale(0.5); opacity: 0.9; }
+      100% { transform: scale(2.0); opacity: 0; }
+    }
+
+    .hunter-marker-wrap {
+      position: relative;
+      width: 30px;
+      height: 30px;
+    }
+    .hunter-core {
+      position: absolute;
+      inset: 5px;
+      background: var(--accent-red);
+      border: 2.5px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 16px rgba(255, 42, 75, 1);
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .hunter-radar {
+      position: absolute;
+      inset: -6px;
+      border: 2px solid rgba(255, 42, 75, 0.8);
+      border-radius: 50%;
+      animation: hunterPing 1.2s ease-out infinite;
+      z-index: 1;
+    }
+    @keyframes hunterPing {
+      0% { transform: scale(0.6); opacity: 0.95; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    /* Setup & Result Overlays */
+    .modal-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+      background: rgba(6, 10, 18, 0.78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      overflow-y: auto;
+    }
+
+    .modal-screen.hidden {
+      display: none !important;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 440px;
+      max-height: 100%;
+      overflow-y: auto;
+      background: rgba(13, 19, 31, 0.96);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 20px 18px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+    }
+
+    .brand-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      color: var(--accent-red);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      margin: 0 0 18px;
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.45;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .control-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #dbe4f0;
+    }
+
+    .control-value {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--accent-blue);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: #243047;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.6);
+      cursor: pointer;
+    }
+
+    .preset-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .preset-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #cbd5e1;
+      border-radius: 10px;
+      padding: 7px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      line-height: 1.25;
+    }
+
+    .preset-btn span {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .preset-btn.active {
+      background: rgba(0, 210, 255, 0.18);
+      border-color: var(--accent-blue);
+      color: #ffffff;
+    }
+
+    .preset-btn.active span {
+      color: var(--accent-blue);
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 800;
+      padding: 10px 8px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .mode-btn.active {
+      background: var(--accent-blue);
+      color: #05111d;
+      box-shadow: 0 4px 14px rgba(0, 210, 255, 0.35);
+    }
+
+    .count-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .count-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 9px 6px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .count-btn.active {
+      background: rgba(255, 42, 75, 0.22);
+      border-color: var(--accent-red);
+      color: #ffffff;
+    }
+
+    .gps-status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-bottom: 16px;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent-amber);
+      flex-shrink: 0;
+    }
+
+    .status-dot.ok { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+    .status-dot.err { background: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+
+    .primary-btn {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 15px 18px;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #ffffff;
+      background: linear-gradient(135deg, #ff2a4b, #d6002f);
+      box-shadow: 0 8px 26px rgba(255, 42, 75, 0.45);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .primary-btn:active {
+      transform: scale(0.98);
+    }
+
+    .secondary-btn {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 14px;
+      padding: 13px 16px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #e2e8f0;
+      background: rgba(255, 255, 255, 0.07);
+      cursor: pointer;
+    }
+
+    /* In-game HUD */
+    #hud {
+      position: fixed;
+      inset: 0;
+      z-index: 600;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    }
+
+    #hud.hidden {
+      display: none !important;
+    }
+
+    .hud-top {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .top-bar-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .hunter-alert-box {
+      flex: 1;
+      pointer-events: auto;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .hunter-alert-box.danger {
+      border-color: var(--accent-red);
+      background: rgba(58, 9, 20, 0.9);
+    }
+
+    .alert-left {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .alert-caption {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      color: var(--accent-red);
+    }
+
+    .alert-distance {
+      font-size: 32px;
+      font-weight: 900;
+      line-height: 1.05;
+      font-variant-numeric: tabular-nums;
+      color: #ffffff;
+    }
+
+    .alert-distance small {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-dim);
+      margin-left: 2px;
+    }
+
+    .bearing-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      padding: 4px 6px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .bearing-arrow {
+      font-size: 22px;
+      line-height: 1;
+      color: var(--accent-red);
+      transition: transform 0.15s linear;
+    }
+
+    .bearing-text {
+      font-size: 11px;
+      font-weight: 800;
+      color: #e2e8f0;
+      margin-top: 2px;
+    }
+
+    .tool-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      color: #ffffff;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .icon-btn.active {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+
+    #gps-error-banner {
+      pointer-events: auto;
+      background: rgba(185, 28, 28, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    #gps-error-banner.hidden {
+      display: none !important;
+    }
+
+    .banner-switch-btn {
+      flex-shrink: 0;
+      border: none;
+      background: #ffffff;
+      color: #991b1b;
+      font-size: 11px;
+      font-weight: 900;
+      padding: 7px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .hud-bottom {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stats-grid {
+      pointer-events: auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 10px 8px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .stat-cell {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+    }
+
+    .stat-val {
+      font-size: 16px;
+      font-weight: 900;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+    }
+
+    .bottom-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .stop-btn {
+      pointer-events: auto;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(15, 23, 42, 0.88);
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 10px 16px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    /* Virtual Joystick */
+    #joystick-wrap {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    #joystick-wrap.hidden {
+      display: none !important;
+    }
+
+    #joystick-base {
+      position: relative;
+      width: 112px;
+      height: 112px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.65);
+      border: 2px solid rgba(0, 210, 255, 0.55);
+      touch-action: none;
+      backdrop-filter: blur(4px);
+    }
+
+    #joystick-knob {
+      position: absolute;
+      width: 46px;
+      height: 46px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #7ce8ff, var(--accent-blue));
+      box-shadow: 0 0 14px rgba(0, 210, 255, 0.75);
+      pointer-events: none;
+    }
+
+    #dash-btn {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 2px solid var(--accent-amber);
+      background: rgba(255, 174, 0, 0.2);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    #dash-btn.active {
+      background: var(--accent-amber);
+      color: #111;
+    }
+
+    .virtual-hint {
+      position: fixed;
+      left: 50%;
+      bottom: 94px;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.72);
+      background: rgba(0, 0, 0, 0.55);
+      padding: 4px 10px;
+      border-radius: 999px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    /* Result overlay - compact bottom sheet so user can inspect map route! */
+    #result-sheet {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      z-index: 950;
+      max-width: 480px;
+      margin: 0 auto;
+      background: rgba(13, 19, 31, 0.94);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 18px 16px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    #result-sheet.hidden {
+      display: none !important;
+    }
+
+    .result-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+
+    .result-badge.caught {
+      background: rgba(255, 42, 75, 0.22);
+      color: #ff6b81;
+      border: 1px solid var(--accent-red);
+    }
+
+    .result-badge.escaped {
+      background: rgba(0, 230, 118, 0.18);
+      color: var(--accent-green);
+      border: 1px solid var(--accent-green);
+    }
+
+    .result-title {
+      margin: 0 0 12px;
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .result-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .result-stat-box {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    .result-stat-box .k {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    .result-stat-box .v {
+      font-size: 20px;
+      font-weight: 900;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .result-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* Light map contrast tweak for HUD */
+    body.light-map .hunter-alert-box,
+    body.light-map .stats-grid,
+    body.light-map .icon-btn {
+      background: rgba(12, 18, 28, 0.92);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="danger-overlay"></div>
+
+  <!-- Setup Screen -->
+  <div id="setup-screen" class="modal-screen">
+    <div class="card">
+      <div class="brand-tag">GPS FITNESS CHASE</div>
+      <h1>HUNTER CHASE</h1>
+      <p class="subtitle">現在地マップ上で架空のハンターから逃げ切れ。余計な制限なし、走るだけで運動になるリアル鬼ごっこ。</p>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">プレイモード</span>
+        </div>
+        <div class="mode-switch">
+          <button type="button" class="mode-btn active" data-mode="gps">リアルGPS</button>
+          <button type="button" class="mode-btn" data-mode="virtual">仮想移動テスト</button>
+        </div>
+      </div>
+
+      <div id="gps-status-pill" class="gps-status-pill">
+        <span id="gps-dot" class="status-dot"></span>
+        <span id="gps-status-text">スタート時に位置情報の利用許可を求めます</span>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">ハンターの速さ</span>
+          <span class="control-value"><span id="speed-val">8.0</span> km/h</span>
+        </div>
+        <input id="speed-slider" type="range" min="3.0" max="20.0" step="0.5" value="8.0" />
+        <div class="preset-row">
+          <button type="button" class="preset-btn" data-speed="5.0">散歩<span>5 km/h</span></button>
+          <button type="button" class="preset-btn active" data-speed="8.0">ジョグ<span>8 km/h</span></button>
+          <button type="button" class="preset-btn" data-speed="12.0">ラン<span>12 km/h</span></button>
+          <button type="button" class="preset-btn" data-speed="16.5">ガチ<span>16.5 km/h</span></button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">ハンターの人数</span>
+          <span class="control-value"><span id="count-val">1</span> 人</span>
+        </div>
+        <div class="count-row">
+          <button type="button" class="count-btn active" data-count="1">1人</button>
+          <button type="button" class="count-btn" data-count="2">2人</button>
+          <button type="button" class="count-btn" data-count="3">3人</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">初期出現距離</span>
+          <span class="control-value"><span id="spawn-val">200</span> m</span>
+        </div>
+        <input id="spawn-slider" type="range" min="100" max="500" step="25" value="200" />
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">捕獲判定距離</span>
+          <span class="control-value"><span id="catch-val">15</span> m</span>
+        </div>
+        <input id="catch-slider" type="range" min="10" max="30" step="1" value="15" />
+      </div>
+
+      <button type="button" id="start-btn" class="primary-btn">逃走スタート</button>
+    </div>
+  </div>
+
+  <!-- In-Game HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="top-bar-row">
+        <div id="hunter-alert-box" class="hunter-alert-box">
+          <div class="alert-left">
+            <span class="alert-caption">NEAREST HUNTER</span>
+            <div class="alert-distance"><span id="hud-dist">---</span><small>m</small></div>
+          </div>
+          <div class="bearing-indicator">
+            <div id="hud-arrow" class="bearing-arrow">▲</div>
+            <div id="hud-bearing" class="bearing-text">--</div>
+          </div>
+        </div>
+        <div class="tool-stack">
+          <button type="button" id="theme-btn" class="icon-btn" title="地図ライト/ダーク切替">☀️</button>
+          <button type="button" id="sound-btn" class="icon-btn active" title="サウンドON/OFF">🔊</button>
+          <button type="button" id="center-btn" class="icon-btn active" title="現在地追従">◎</button>
+        </div>
+      </div>
+
+      <div id="gps-error-banner" class="hidden">
+        <span id="gps-error-msg">GPSを取得できません</span>
+        <button type="button" id="switch-virtual-btn" class="banner-switch-btn">仮想移動へ切替</button>
+      </div>
+    </div>
+
+    <div class="hud-bottom">
+      <div class="bottom-actions">
+        <button type="button" id="end-run-btn" class="stop-btn">終了して記録を見る</button>
+        <div id="joystick-wrap" class="hidden">
+          <button type="button" id="dash-btn">DASH</button>
+          <div id="joystick-base">
+            <div id="joystick-knob"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="stat-label">生存時間</div>
+          <div id="stat-time" class="stat-val">00:00</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">走破距離</div>
+          <div id="stat-dist" class="stat-val">0.00 km</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">現在速度</div>
+          <div id="stat-speed" class="stat-val">0.0 km/h</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">消費目安</div>
+          <div id="stat-kcal" class="stat-val">0 kcal</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="virtual-hint" class="virtual-hint hidden">WASD / 矢印キー（Shiftでダッシュ）または右下のスティックで移動</div>
+
+  <!-- Result Sheet (Map stays interactive above/behind it) -->
+  <div id="result-sheet" class="hidden">
+    <div id="result-badge" class="result-badge caught">CAPTURED</div>
+    <h2 id="result-title" class="result-title">ハンターに捕獲された！</h2>
+    <div class="result-stats">
+      <div class="result-stat-box">
+        <div class="k">生存時間</div>
+        <div id="res-time" class="v">00:00</div>
+      </div>
+      <div class="result-stat-box">
+        <div class="k">走破距離</div>
+        <div id="res-dist" class="v">0.00 km</div>
+      </div>
+      <div class="result-stat-box">
+        <div class="k">平均速度</div>
+        <div id="res-avg" class="v">0.0 km/h</div>
+      </div>
+      <div class="result-stat-box">
+        <div class="k">推定消費カロリー</div>
+        <div id="res-kcal" class="v">0 kcal</div>
+      </div>
+    </div>
+    <div class="result-actions">
+      <button type="button" id="retry-btn" class="primary-btn" style="padding:13px 12px;font-size:14px;">もう一度逃げる</button>
+      <button type="button" id="back-setup-btn" class="secondary-btn">設定を変更</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    (() => {
+      // ==========================================
+      // Geo Math Utilities
+      // ==========================================
+      const R_EARTH = 6371000;
+      const toRad = d => (d * Math.PI) / 180;
+      const toDeg = r => (r * 180) / Math.PI;
+
+      function haversineMeters(a, b) {
+        const dLat = toRad(b.lat - a.lat);
+        const dLng = toRad(b.lng - a.lng);
+        const lat1 = toRad(a.lat);
+        const lat2 = toRad(b.lat);
+        const h =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        return 2 * R_EARTH * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+      }
+
+      function bearingDegrees(from, to) {
+        const lat1 = toRad(from.lat);
+        const lat2 = toRad(to.lat);
+        const dLng = toRad(to.lng - from.lng);
+        const y = Math.sin(dLng) * Math.cos(lat2);
+        const x =
+          Math.cos(lat1) * Math.sin(lat2) -
+          Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+      }
+
+      function bearingLabel(deg) {
+        const dirs = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
+        return dirs[Math.round(deg / 45) % 8];
+      }
+
+      function offsetLatLng(origin, distMeters, bearingDeg) {
+        const brng = toRad(bearingDeg);
+        const angDist = distMeters / R_EARTH;
+        const lat1 = toRad(origin.lat);
+        const lng1 = toRad(origin.lng);
+
+        const lat2 = Math.asin(
+          Math.sin(lat1) * Math.cos(angDist) +
+          Math.cos(lat1) * Math.sin(angDist) * Math.cos(brng)
+        );
+        const lng2 =
+          lng1 +
+          Math.atan2(
+            Math.sin(brng) * Math.sin(angDist) * Math.cos(lat1),
+            Math.cos(angDist) - Math.sin(lat1) * Math.sin(lat2)
+          );
+        return { lat: toDeg(lat2), lng: toDeg(lng2) };
+      }
+
+      function moveTowards(from, to, stepMeters) {
+        const dist = haversineMeters(from, to);
+        if (dist <= stepMeters || dist < 0.05) {
+          return { lat: to.lat, lng: to.lng };
+        }
+        const brng = bearingDegrees(from, to);
+        return offsetLatLng(from, stepMeters, brng);
+      }
+
+      function formatTime(sec) {
+        const s = Math.max(0, Math.floor(sec));
+        const m = Math.floor(s / 60);
+        const rem = s % 60;
+        return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+      }
+
+      // ==========================================
+      // Web Audio Synthesizer (Heartbeat & Radar)
+      // ==========================================
+      class ChaseAudio {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+          this.lastBeatTime = 0;
+        }
+        unlock() {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          if (!this.ctx) {
+            this.ctx = new AudioCtx();
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+        playHeartbeat(intensity) {
+          if (!this.enabled || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          // Deep double thump
+          [0, 0.14].forEach((delay, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            const startFreq = idx === 0 ? 78 : 62;
+            osc.frequency.setValueAtTime(startFreq, now + delay);
+            osc.frequency.exponentialRampToValueAtTime(32, now + delay + 0.13);
+
+            const vol = Math.min(0.45, (0.14 + intensity * 0.28) * (idx === 0 ? 1 : 0.72));
+            gain.gain.setValueAtTime(0.001, now + delay);
+            gain.gain.linearRampToValueAtTime(vol, now + delay + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + delay);
+            osc.stop(now + delay + 0.16);
+          });
+
+          // High radar ping when very close
+          if (intensity > 0.35) {
+            const ping = this.ctx.createOscillator();
+            const pGain = this.ctx.createGain();
+            ping.type = 'triangle';
+            ping.frequency.setValueAtTime(880 + intensity * 440, now);
+            pGain.gain.setValueAtTime(0.001, now);
+            pGain.gain.linearRampToValueAtTime(0.06 + intensity * 0.08, now + 0.01);
+            pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            ping.connect(pGain);
+            pGain.connect(this.ctx.destination);
+            ping.start(now);
+            ping.stop(now + 0.11);
+          }
+        }
+        playCaught() {
+          if (!this.enabled || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          [440, 311, 220].forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, now + i * 0.14);
+            gain.gain.setValueAtTime(0.18, now + i * 0.14);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.14 + 0.32);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + i * 0.14);
+            osc.stop(now + i * 0.14 + 0.34);
+          });
+        }
+        tick(nowMs, minDistance, catchRadius) {
+          if (!this.enabled || !this.ctx) return;
+          const dangerStart = Math.max(80, catchRadius + 65);
+          if (minDistance > dangerStart) return;
+          const ratio = Math.max(0, Math.min(1, 1 - (minDistance - catchRadius) / (dangerStart - catchRadius)));
+          const intervalMs = 1150 - ratio * 820; // 1150ms down to 330ms
+          if (nowMs - this.lastBeatTime >= intervalMs) {
+            this.lastBeatTime = nowMs;
+            this.playHeartbeat(ratio);
+          }
+        }
+      }
+
+      const audio = new ChaseAudio();
+
+      // ==========================================
+      // App State & Config
+      // ==========================================
+      const DEFAULT_POS = { lat: 35.681236, lng: 139.767125 }; // Tokyo Station fallback for virtual mode
+
+      const config = {
+        mode: 'gps',
+        hunterSpeedKmh: 8.0,
+        hunterCount: 1,
+        spawnDistance: 200,
+        catchRadius: 15,
+      };
+
+      const state = {
+        running: false,
+        darkMap: true,
+        followPlayer: true,
+        playerPos: null,
+        lastPlayerPos: null,
+        playerPath: [],
+        hunters: [],
+        watchId: null,
+        startTimeMs: 0,
+        elapsedSec: 0,
+        totalDistMeters: 0,
+        currentSpeedKmh: 0,
+        speedSamples: [],
+        rafId: null,
+        lastFrameMs: 0,
+      };
+
+      // Virtual controls
+      const keys = new Set();
+      const joy = { active: false, dx: 0, dy: 0, dash: false };
+
+      // ==========================================
+      // DOM Elements
+      // ==========================================
+      const el = {
+        setupScreen: document.getElementById('setup-screen'),
+        hud: document.getElementById('hud'),
+        resultSheet: document.getElementById('result-sheet'),
+        dangerOverlay: document.getElementById('danger-overlay'),
+        gpsDot: document.getElementById('gps-dot'),
+        gpsStatusText: document.getElementById('gps-status-text'),
+        gpsStatusPill: document.getElementById('gps-status-pill'),
+        speedSlider: document.getElementById('speed-slider'),
+        speedVal: document.getElementById('speed-val'),
+        countVal: document.getElementById('count-val'),
+        spawnSlider: document.getElementById('spawn-slider'),
+        spawnVal: document.getElementById('spawn-val'),
+        catchSlider: document.getElementById('catch-slider'),
+        catchVal: document.getElementById('catch-val'),
+        startBtn: document.getElementById('start-btn'),
+        hunterAlertBox: document.getElementById('hunter-alert-box'),
+        hudDist: document.getElementById('hud-dist'),
+        hudArrow: document.getElementById('hud-arrow'),
+        hudBearing: document.getElementById('hud-bearing'),
+        themeBtn: document.getElementById('theme-btn'),
+        soundBtn: document.getElementById('sound-btn'),
+        centerBtn: document.getElementById('center-btn'),
+        gpsErrorBanner: document.getElementById('gps-error-banner'),
+        gpsErrorMsg: document.getElementById('gps-error-msg'),
+        switchVirtualBtn: document.getElementById('switch-virtual-btn'),
+        endRunBtn: document.getElementById('end-run-btn'),
+        joystickWrap: document.getElementById('joystick-wrap'),
+        joystickBase: document.getElementById('joystick-base'),
+        joystickKnob: document.getElementById('joystick-knob'),
+        dashBtn: document.getElementById('dash-btn'),
+        virtualHint: document.getElementById('virtual-hint'),
+        statTime: document.getElementById('stat-time'),
+        statDist: document.getElementById('stat-dist'),
+        statSpeed: document.getElementById('stat-speed'),
+        statKcal: document.getElementById('stat-kcal'),
+        resultBadge: document.getElementById('result-badge'),
+        resultTitle: document.getElementById('result-title'),
+        resTime: document.getElementById('res-time'),
+        resDist: document.getElementById('res-dist'),
+        resAvg: document.getElementById('res-avg'),
+        resKcal: document.getElementById('res-kcal'),
+        retryBtn: document.getElementById('retry-btn'),
+        backSetupBtn: document.getElementById('back-setup-btn'),
+      };
+
+      // ==========================================
+      // Leaflet Map Initialization
+      // ==========================================
+      const map = L.map('map', {
+        center: [DEFAULT_POS.lat, DEFAULT_POS.lng],
+        zoom: 16,
+        zoomControl: false,
+        attributionControl: true,
+      });
+
+      const darkTiles = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        {
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 20,
+        }
+      );
+
+      const lightTiles = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        }
+      );
+
+      darkTiles.addTo(map);
+
+      map.on('dragstart', () => {
+        if (state.running) {
+          state.followPlayer = false;
+          el.centerBtn.classList.remove('active');
+        }
+      });
+
+      const playerIcon = L.divIcon({
+        className: '',
+        html: '<div class="player-marker-wrap"><div class="player-pulse"></div><div class="player-dot"></div></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+
+      let playerMarker = null;
+      let playerPolyline = null;
+      let hunterLayers = [];
+
+      function clearMapEntities() {
+        if (playerMarker) { map.removeLayer(playerMarker); playerMarker = null; }
+        if (playerPolyline) { map.removeLayer(playerPolyline); playerPolyline = null; }
+        hunterLayers.forEach(h => {
+          if (h.marker) map.removeLayer(h.marker);
+          if (h.circle) map.removeLayer(h.circle);
+          if (h.polyline) map.removeLayer(h.polyline);
+        });
+        hunterLayers = [];
+      }
+
+      // ==========================================
+      // UI Bindings (Setup)
+      // ==========================================
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          config.mode = btn.dataset.mode;
+          if (config.mode === 'virtual') {
+            el.gpsDot.className = 'status-dot ok';
+            el.gpsStatusText.textContent = '仮想移動モード：GPSなしで今すぐ操作できます';
+          } else {
+            el.gpsDot.className = 'status-dot';
+            el.gpsStatusText.textContent = 'スタート時に位置情報の利用許可を求めます';
+          }
+        });
+      });
+
+      function syncSpeedUI(val) {
+        const num = parseFloat(val);
+        config.hunterSpeedKmh = num;
+        el.speedSlider.value = num;
+        el.speedVal.textContent = num.toFixed(1);
+        document.querySelectorAll('.preset-btn').forEach(b => {
+          b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - num) < 0.01);
+        });
+      }
+
+      el.speedSlider.addEventListener('input', e => syncSpeedUI(e.target.value));
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => syncSpeedUI(btn.dataset.speed));
+      });
+
+      document.querySelectorAll('.count-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.count-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          config.hunterCount = parseInt(btn.dataset.count, 10);
+          el.countVal.textContent = config.hunterCount;
+        });
+      });
+
+      el.spawnSlider.addEventListener('input', e => {
+        config.spawnDistance = parseInt(e.target.value, 10);
+        el.spawnVal.textContent = config.spawnDistance;
+      });
+
+      el.catchSlider.addEventListener('input', e => {
+        config.catchRadius = parseInt(e.target.value, 10);
+        el.catchVal.textContent = config.catchRadius;
+      });
+
+      // HUD buttons
+      el.themeBtn.addEventListener('click', () => {
+        state.darkMap = !state.darkMap;
+        if (state.darkMap) {
+          map.removeLayer(lightTiles);
+          darkTiles.addTo(map);
+          document.body.classList.remove('light-map');
+          el.themeBtn.textContent = '☀️';
+        } else {
+          map.removeLayer(darkTiles);
+          lightTiles.addTo(map);
+          document.body.classList.add('light-map');
+          el.themeBtn.textContent = '🌙';
+        }
+      });
+
+      el.soundBtn.addEventListener('click', () => {
+        audio.unlock();
+        audio.enabled = !audio.enabled;
+        el.soundBtn.textContent = audio.enabled ? '🔊' : '🔇';
+        el.soundBtn.classList.toggle('active', audio.enabled);
+      });
+
+      el.centerBtn.addEventListener('click', () => {
+        state.followPlayer = true;
+        el.centerBtn.classList.add('active');
+        if (state.playerPos) {
+          map.panTo([state.playerPos.lat, state.playerPos.lng], { animate: true });
+        }
+      });
+
+      el.switchVirtualBtn.addEventListener('click', () => {
+        stopGpsWatch();
+        config.mode = 'virtual';
+        el.gpsErrorBanner.classList.add('hidden');
+        el.joystickWrap.classList.remove('hidden');
+        el.virtualHint.classList.remove('hidden');
+      });
+
+      el.endRunBtn.addEventListener('click', () => {
+        finishGame(false);
+      });
+
+      el.retryBtn.addEventListener('click', () => {
+        el.resultSheet.classList.add('hidden');
+        startGameFlow();
+      });
+
+      el.backSetupBtn.addEventListener('click', () => {
+        el.resultSheet.classList.add('hidden');
+        el.setupScreen.classList.remove('hidden');
+      });
+
+      // ==========================================
+      // Virtual Controls (Keyboard & Touch Joystick)
+      // ==========================================
+      window.addEventListener('keydown', e => {
+        if (!state.running || config.mode !== 'virtual') return;
+        const k = e.key.toLowerCase();
+        if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
+          keys.add(k);
+        }
+      });
+
+      window.addEventListener('keyup', e => {
+        keys.delete(e.key.toLowerCase());
+      });
+
+      function updateJoystickFromPoint(clientX, clientY) {
+        const rect = el.joystickBase.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const maxR = rect.width * 0.36;
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const mag = Math.hypot(dx, dy);
+        if (mag > maxR) {
+          dx = (dx / mag) * maxR;
+          dy = (dy / mag) * maxR;
+        }
+        el.joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        joy.dx = dx / maxR;
+        joy.dy = dy / maxR;
+      }
+
+      function resetJoystick() {
+        joy.active = false;
+        joy.dx = 0;
+        joy.dy = 0;
+        el.joystickKnob.style.transform = 'translate(-50%, -50%)';
+      }
+
+      el.joystickBase.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        el.joystickBase.setPointerCapture(e.pointerId);
+        joy.active = true;
+        updateJoystickFromPoint(e.clientX, e.clientY);
+      });
+      el.joystickBase.addEventListener('pointermove', e => {
+        if (!joy.active) return;
+        e.preventDefault();
+        updateJoystickFromPoint(e.clientX, e.clientY);
+      });
+      el.joystickBase.addEventListener('pointerup', resetJoystick);
+      el.joystickBase.addEventListener('pointercancel', resetJoystick);
+
+      el.dashBtn.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        joy.dash = true;
+        el.dashBtn.classList.add('active');
+      });
+      const endDash = () => {
+        joy.dash = false;
+        el.dashBtn.classList.remove('active');
+      };
+      el.dashBtn.addEventListener('pointerup', endDash);
+      el.dashBtn.addEventListener('pointercancel', endDash);
+      el.dashBtn.addEventListener('pointerleave', endDash);
+
+      // ==========================================
+      // GPS Handling
+      // ==========================================
+      function stopGpsWatch() {
+        if (state.watchId !== null && navigator.geolocation) {
+          navigator.geolocation.clearWatch(state.watchId);
+          state.watchId = null;
+        }
+      }
+
+      function showGpsError(msg) {
+        el.gpsErrorMsg.textContent = msg;
+        el.gpsErrorBanner.classList.remove('hidden');
+      }
+
+      function describeGeoError(err) {
+        if (!err) return '位置情報を取得できませんでした';
+        if (err.code === 1) return '位置情報の利用が拒否されています（ブラウザ設定を確認してください）';
+        if (err.code === 2) return 'GPS電波を受信できません（屋外でお試しください）';
+        if (err.code === 3) return '位置情報の取得がタイムアウトしました';
+        return '位置情報を利用できません';
+      }
+
+      function onRealGpsPosition(pos) {
+        el.gpsErrorBanner.classList.add('hidden');
+        const newPos = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+        const accuracy = pos.coords.accuracy || 20;
+
+        if (!state.playerPos) {
+          state.playerPos = newPos;
+          return;
+        }
+
+        const moved = haversineMeters(state.playerPos, newPos);
+        // Filter extreme GPS jitter when standing still, but stay responsive to real movement
+        if (moved >= 1.5 && (accuracy <= 60 || moved >= accuracy * 0.5)) {
+          state.totalDistMeters += moved;
+          state.playerPos = newPos;
+          state.playerPath.push([newPos.lat, newPos.lng]);
+          if (playerMarker) playerMarker.setLatLng([newPos.lat, newPos.lng]);
+          if (playerPolyline) playerPolyline.setLatLngs(state.playerPath);
+          if (state.followPlayer) {
+            map.panTo([newPos.lat, newPos.lng], { animate: true, duration: 0.4 });
+          }
+        }
+
+        if (typeof pos.coords.speed === 'number' && !Number.isNaN(pos.coords.speed) && pos.coords.speed >= 0) {
+          state.currentSpeedKmh = pos.coords.speed * 3.6;
+        }
+      }
+
+      // ==========================================
+      // Game Lifecycle
+      // ==========================================
+      function initGameWorld(startPos) {
+        clearMapEntities();
+        state.running = true;
+        state.followPlayer = true;
+        el.centerBtn.classList.add('active');
+        state.playerPos = { ...startPos };
+        state.lastPlayerPos = { ...startPos };
+        state.playerPath = [[startPos.lat, startPos.lng]];
+        state.totalDistMeters = 0;
+        state.currentSpeedKmh = 0;
+        state.elapsedSec = 0;
+        state.startTimeMs = performance.now();
+        state.lastFrameMs = state.startTimeMs;
+        state.hunters = [];
+
+        // Player marker & trail
+        playerMarker = L.marker([startPos.lat, startPos.lng], { icon: playerIcon, zIndexOffset: 500 }).addTo(map);
+        playerPolyline = L.polyline(state.playerPath, {
+          color: '#00d2ff',
+          weight: 5,
+          opacity: 0.9,
+          lineJoin: 'round',
+        }).addTo(map);
+
+        // Spawn Hunters evenly distributed around player
+        const baseAngle = Math.random() * 360;
+        for (let i = 0; i < config.hunterCount; i++) {
+          const angle = (baseAngle + (360 / config.hunterCount) * i + (Math.random() * 30 - 15)) % 360;
+          const hPos = offsetLatLng(startPos, config.spawnDistance, angle);
+          const hPath = [[hPos.lat, hPos.lng]];
+
+          const hIcon = L.divIcon({
+            className: '',
+            html: `<div class="hunter-marker-wrap"><div class="hunter-radar"></div><div class="hunter-core">H${i + 1}</div></div>`,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+          });
+
+          const marker = L.marker([hPos.lat, hPos.lng], { icon: hIcon, zIndexOffset: 400 }).addTo(map);
+          const circle = L.circle([hPos.lat, hPos.lng], {
+            radius: config.catchRadius,
+            color: '#ff2a4b',
+            weight: 1.5,
+            fillColor: '#ff2a4b',
+            fillOpacity: 0.22,
+          }).addTo(map);
+          const polyline = L.polyline(hPath, {
+            color: '#ff2a4b',
+            weight: 3,
+            opacity: 0.65,
+            dashArray: '6, 6',
+          }).addTo(map);
+
+          state.hunters.push({
+            id: i + 1,
+            pos: hPos,
+            path: hPath,
+            lastPathRecordMs: state.startTimeMs,
+          });
+          hunterLayers.push({ marker, circle, polyline });
+        }
+
+        // Fit initial view cleanly around player
+        map.setView([startPos.lat, startPos.lng], 16, { animate: false });
+
+        // Show HUD
+        el.setupScreen.classList.add('hidden');
+        el.resultSheet.classList.add('hidden');
+        el.hud.classList.remove('hidden');
+
+        if (config.mode === 'virtual') {
+          el.gpsErrorBanner.classList.add('hidden');
+          el.joystickWrap.classList.remove('hidden');
+          el.virtualHint.classList.remove('hidden');
+        } else {
+          el.joystickWrap.classList.add('hidden');
+          el.virtualHint.classList.add('hidden');
+        }
+
+        if (state.rafId) cancelAnimationFrame(state.rafId);
+        state.rafId = requestAnimationFrame(gameLoop);
+      }
+
+      function startGameFlow() {
+        audio.unlock();
+
+        if (config.mode === 'virtual') {
+          const startPos = state.playerPos || { ...DEFAULT_POS };
+          initGameWorld(startPos);
+          return;
+        }
+
+        // Real GPS mode
+        if (!navigator.geolocation) {
+          el.gpsDot.className = 'status-dot err';
+          el.gpsStatusText.textContent = 'このブラウザはGPSに対応していません';
+          initGameWorld({ ...DEFAULT_POS });
+          showGpsError('このブラウザはGPSに対応していません');
+          return;
+        }
+
+        el.startBtn.disabled = true;
+        el.startBtn.textContent = '現在地を取得中...';
+        el.gpsDot.className = 'status-dot';
+        el.gpsStatusText.textContent = 'GPS信号を受信しています...';
+
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            el.startBtn.disabled = false;
+            el.startBtn.textContent = '逃走スタート';
+            el.gpsDot.className = 'status-dot ok';
+            el.gpsStatusText.textContent = 'GPSロック完了';
+
+            const startPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            initGameWorld(startPos);
+
+            stopGpsWatch();
+            state.watchId = navigator.geolocation.watchPosition(
+              onRealGpsPosition,
+              err => showGpsError(describeGeoError(err)),
+              { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+            );
+          },
+          err => {
+            el.startBtn.disabled = false;
+            el.startBtn.textContent = '逃走スタート';
+            const msg = describeGeoError(err);
+            el.gpsDot.className = 'status-dot err';
+            el.gpsStatusText.textContent = msg;
+            // Launch map anyway with clear switch banner so user is never stuck
+            initGameWorld({ ...DEFAULT_POS });
+            showGpsError(msg);
+          },
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
+        );
+      }
+
+      el.startBtn.addEventListener('click', startGameFlow);
+
+      function updateVirtualPlayer(dt) {
+        let vx = joy.dx;
+        let vy = joy.dy;
+
+        if (keys.has('w') || keys.has('arrowup')) vy -= 1;
+        if (keys.has('s') || keys.has('arrowdown')) vy += 1;
+        if (keys.has('a') || keys.has('arrowleft')) vx -= 1;
+        if (keys.has('d') || keys.has('arrowright')) vx += 1;
+
+        const mag = Math.hypot(vx, vy);
+        if (mag > 0.08) {
+          const norm = Math.min(1, mag);
+          const nx = vx / mag;
+          const ny = vy / mag;
+          const dashing = joy.dash || keys.has('shift');
+          const speedKmh = (dashing ? 18.0 : 10.5) * norm;
+          const stepMeters = (speedKmh / 3.6) * dt;
+
+          // Bearing: North = 0 (ny = -1), East = 90 (nx = 1)
+          const brng = (toDeg(Math.atan2(nx, -ny)) + 360) % 360;
+          const nextPos = offsetLatLng(state.playerPos, stepMeters, brng);
+
+          state.totalDistMeters += stepMeters;
+          state.currentSpeedKmh = speedKmh;
+          state.playerPos = nextPos;
+          state.playerPath.push([nextPos.lat, nextPos.lng]);
+
+          if (playerMarker) playerMarker.setLatLng([nextPos.lat, nextPos.lng]);
+          if (playerPolyline) playerPolyline.setLatLngs(state.playerPath);
+          if (state.followPlayer) {
+            map.panTo([nextPos.lat, nextPos.lng], { animate: false });
+          }
+        } else {
+          state.currentSpeedKmh *= 0.85;
+          if (state.currentSpeedKmh < 0.2) state.currentSpeedKmh = 0;
+        }
+      }
+
+      function estimateCalories(distMeters, elapsedSec) {
+        // Running/walking estimate for ~62kg body weight: ~64 kcal per km
+        const distKm = distMeters / 1000;
+        return Math.round(distKm * 64);
+      }
+
+      function gameLoop(nowMs) {
+        if (!state.running) return;
+
+        const rawDt = (nowMs - state.lastFrameMs) / 1000;
+        state.lastFrameMs = nowMs;
+        // Clamp dt cleanly while respecting background resume up to 15s
+        const dt = Math.max(0.001, Math.min(15, rawDt));
+
+        state.elapsedSec = (nowMs - state.startTimeMs) / 1000;
+
+        if (config.mode === 'virtual') {
+          updateVirtualPlayer(dt);
+        }
+
+        // Move hunters toward player
+        const hunterStep = (config.hunterSpeedKmh / 3.6) * dt;
+        let minDist = Infinity;
+        let nearestHunter = null;
+
+        state.hunters.forEach((h, idx) => {
+          h.pos = moveTowards(h.pos, state.playerPos, hunterStep);
+          const layer = hunterLayers[idx];
+          layer.marker.setLatLng([h.pos.lat, h.pos.lng]);
+          layer.circle.setLatLng([h.pos.lat, h.pos.lng]);
+
+          if (nowMs - h.lastPathRecordMs >= 500) {
+            h.lastPathRecordMs = nowMs;
+            h.path.push([h.pos.lat, h.pos.lng]);
+            layer.polyline.setLatLngs(h.path);
+          }
+
+          const d = haversineMeters(state.playerPos, h.pos);
+          if (d < minDist) {
+            minDist = d;
+            nearestHunter = h;
+          }
+        });
+
+        // Update HUD distance & bearing
+        el.hudDist.textContent = minDist < 1000 ? Math.round(minDist) : (minDist / 1000).toFixed(2) + 'k';
+        if (nearestHunter) {
+          const brng = bearingDegrees(state.playerPos, nearestHunter.pos);
+          el.hudArrow.style.transform = `rotate(${Math.round(brng)}deg)`;
+          el.hudBearing.textContent = bearingLabel(brng);
+        }
+
+        // Danger visual & audio feedback (< 50m)
+        if (minDist <= 50) {
+          const closeness = Math.max(0, Math.min(1, 1 - (minDist - config.catchRadius) / Math.max(1, 50 - config.catchRadius)));
+          const pulseSec = (1.0 - closeness * 0.65).toFixed(2) + 's';
+          el.dangerOverlay.style.setProperty('--pulse-speed', pulseSec);
+          el.dangerOverlay.classList.add('pulsing');
+          el.hunterAlertBox.classList.add('danger');
+        } else {
+          el.dangerOverlay.classList.remove('pulsing');
+          el.dangerOverlay.style.opacity = 0;
+          el.hunterAlertBox.classList.remove('danger');
+        }
+
+        audio.tick(nowMs, minDist, config.catchRadius);
+
+        // Update workout stats
+        el.statTime.textContent = formatTime(state.elapsedSec);
+        el.statDist.textContent = `${(state.totalDistMeters / 1000).toFixed(2)} km`;
+        el.statSpeed.textContent = `${state.currentSpeedKmh.toFixed(1)} km/h`;
+        el.statKcal.textContent = `${estimateCalories(state.totalDistMeters, state.elapsedSec)} kcal`;
+
+        // Check capture
+        if (minDist <= config.catchRadius) {
+          finishGame(true);
+          return;
+        }
+
+        state.rafId = requestAnimationFrame(gameLoop);
+      }
+
+      function finishGame(caught) {
+        state.running = false;
+        stopGpsWatch();
+        if (state.rafId) {
+          cancelAnimationFrame(state.rafId);
+          state.rafId = null;
+        }
+        resetJoystick();
+        keys.clear();
+
+        el.dangerOverlay.classList.remove('pulsing');
+        el.dangerOverlay.style.opacity = 0;
+        el.hud.classList.add('hidden');
+        el.virtualHint.classList.add('hidden');
+
+        // Finalize hunter trail points
+        state.hunters.forEach((h, idx) => {
+          h.path.push([h.pos.lat, h.pos.lng]);
+          hunterLayers[idx].polyline.setLatLngs(h.path);
+        });
+
+        if (caught) {
+          audio.playCaught();
+          el.resultBadge.className = 'result-badge caught';
+          el.resultBadge.textContent = 'CAPTURED';
+          el.resultTitle.textContent = 'ハンターに捕獲された！';
+        } else {
+          el.resultBadge.className = 'result-badge escaped';
+          el.resultBadge.textContent = 'RUN COMPLETED';
+          el.resultTitle.textContent = '逃走完了・ワークアウト終了';
+        }
+
+        const distKm = state.totalDistMeters / 1000;
+        const avgKmh = state.elapsedSec > 1 ? distKm / (state.elapsedSec / 3600) : 0;
+
+        el.resTime.textContent = formatTime(state.elapsedSec);
+        el.resDist.textContent = `${distKm.toFixed(2)} km`;
+        el.resAvg.textContent = `${avgKmh.toFixed(1)} km/h`;
+        el.resKcal.textContent = `${estimateCalories(state.totalDistMeters, state.elapsedSec)} kcal`;
+
+        // Zoom map to fit full chase route!
+        const allPoints = [...state.playerPath];
+        state.hunters.forEach(h => allPoints.push(...h.path));
+        if (allPoints.length >= 2) {
+          const bounds = L.latLngBounds(allPoints);
+          map.fitBounds(bounds, { paddingTopLeft: [30, 30], paddingBottomRight: [30, 290], maxZoom: 17 });
+        }
+
+        el.resultSheet.classList.remove('hidden');
+      }
+    })();
+  </script>
+</body>
+</html>
