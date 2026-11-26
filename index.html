@@ -375,6 +375,174 @@
       cursor: pointer;
     }
 
+    .rule-switch {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .rule-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 13px;
+      font-weight: 800;
+      padding: 9px 4px;
+      border-radius: 9px;
+      cursor: pointer;
+      line-height: 1.2;
+    }
+
+    .rule-btn span {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 2px;
+      opacity: 0.85;
+    }
+
+    .rule-btn.active {
+      background: var(--accent-green);
+      color: #04140b;
+      box-shadow: 0 4px 14px rgba(0, 230, 118, 0.3);
+    }
+
+    .rule-note {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.45;
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .time-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 9px 2px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .time-btn.active {
+      background: rgba(0, 230, 118, 0.18);
+      border-color: var(--accent-green);
+      color: #ffffff;
+    }
+
+    .hidden-block {
+      display: none !important;
+    }
+
+    /* Goal picking panel */
+    #goal-picker {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      z-index: 950;
+      max-width: 480px;
+      margin: 0 auto;
+      background: rgba(13, 19, 31, 0.95);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 16px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
+    }
+
+    #goal-picker.hidden {
+      display: none !important;
+    }
+
+    .picker-title {
+      margin: 0 0 4px;
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .picker-text {
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.45;
+    }
+
+    .picker-text b {
+      color: var(--accent-green);
+      font-size: 15px;
+    }
+
+    .primary-btn:disabled {
+      opacity: 0.4;
+      box-shadow: none;
+    }
+
+    .goal-marker {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 16px rgba(0, 230, 118, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+    }
+
+    #goal-box {
+      pointer-events: auto;
+      background: var(--panel-bg);
+      border: 1px solid rgba(0, 230, 118, 0.55);
+      border-radius: 14px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #goal-box.hidden {
+      display: none !important;
+    }
+
+    .goal-caption {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      color: var(--accent-green);
+    }
+
+    .goal-distance {
+      font-size: 24px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .goal-distance small {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-left: 2px;
+    }
+
+    #goal-arrow {
+      color: var(--accent-green);
+    }
+
     /* In-game HUD */
     #hud {
       position: fixed;
@@ -794,6 +962,31 @@
         </div>
       </div>
 
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">ゲームルール</span>
+        </div>
+        <div class="rule-switch">
+          <button type="button" class="rule-btn active" data-rule="free">フリー<span>時間無制限</span></button>
+          <button type="button" class="rule-btn" data-rule="goal">ゴール<span>地点を決める</span></button>
+          <button type="button" class="rule-btn" data-rule="time">タイム<span>時間を決める</span></button>
+        </div>
+        <p id="rule-note" class="rule-note">好きなだけ逃げ続けるモード。終了ボタンで記録を確認。</p>
+        <div id="time-group" class="hidden-block">
+          <div class="control-header" style="margin-top:12px;margin-bottom:0;">
+            <span class="control-label">制限時間</span>
+            <span class="control-value"><span id="time-val">5</span> 分</span>
+          </div>
+          <div class="time-row">
+            <button type="button" class="time-btn" data-min="3">3分</button>
+            <button type="button" class="time-btn active" data-min="5">5分</button>
+            <button type="button" class="time-btn" data-min="10">10分</button>
+            <button type="button" class="time-btn" data-min="15">15分</button>
+            <button type="button" class="time-btn" data-min="30">30分</button>
+          </div>
+        </div>
+      </div>
+
       <div id="gps-status-pill" class="gps-status-pill">
         <span id="gps-dot" class="status-dot"></span>
         <span id="gps-status-text">スタート時に位置情報の利用許可を求めます</span>
@@ -866,6 +1059,17 @@
         </div>
       </div>
 
+      <div id="goal-box" class="hidden">
+        <div>
+          <div class="goal-caption">GOAL まで</div>
+          <div class="goal-distance"><span id="goal-dist">---</span><small>m</small></div>
+        </div>
+        <div class="bearing-indicator">
+          <div id="goal-arrow" class="bearing-arrow">▲</div>
+          <div id="goal-bearing" class="bearing-text">--</div>
+        </div>
+      </div>
+
       <div id="route-status" class="hidden">道路データを取得できないため直線で追跡中</div>
 
       <div id="gps-error-banner" class="hidden">
@@ -887,7 +1091,7 @@
 
       <div class="stats-grid">
         <div class="stat-cell">
-          <div class="stat-label">生存時間</div>
+          <div id="stat-time-label" class="stat-label">生存時間</div>
           <div id="stat-time" class="stat-val">00:00</div>
         </div>
         <div class="stat-cell">
@@ -908,13 +1112,23 @@
 
   <div id="virtual-hint" class="virtual-hint hidden">WASD / 矢印キー（Shiftでダッシュ）または右下のスティックで移動</div>
 
+  <!-- Goal Picker (goal rule) -->
+  <div id="goal-picker" class="hidden">
+    <h2 class="picker-title">🏁 ゴール地点を決める</h2>
+    <p id="picker-text" class="picker-text">地図をタップしてゴールを置いてください（現在地から50m以上）。</p>
+    <div class="result-actions">
+      <button type="button" id="picker-cancel-btn" class="secondary-btn">戻る</button>
+      <button type="button" id="picker-start-btn" class="primary-btn" style="padding:13px 12px;font-size:14px;" disabled>スタート</button>
+    </div>
+  </div>
+
   <!-- Result Sheet (Map stays interactive above/behind it) -->
   <div id="result-sheet" class="hidden">
     <div id="result-badge" class="result-badge caught">CAPTURED</div>
     <h2 id="result-title" class="result-title">ハンターに捕獲された！</h2>
     <div class="result-stats">
       <div class="result-stat-box">
-        <div class="k">生存時間</div>
+        <div id="res-time-label" class="k">生存時間</div>
         <div id="res-time" class="v">00:00</div>
       </div>
       <div class="result-stat-box">
@@ -1103,6 +1317,8 @@
 
       const config = {
         mode: 'gps',
+        rule: 'free',        // 'free' | 'goal' | 'time'
+        timeLimitMin: 5,
         hunterSpeedKmh: 8.0,
         hunterCount: 1,
         spawnDistance: 200,
@@ -1125,6 +1341,11 @@
         speedSamples: [],
         rafId: null,
         gameId: 0,
+        goal: null,             // {lat,lng} for goal rule
+        picking: false,
+        pickStart: null,
+        pickStartWatch: false,
+        pendingGpsError: null,
         lastFrameMs: 0,
       };
 
@@ -1180,6 +1401,19 @@
         retryBtn: document.getElementById('retry-btn'),
         backSetupBtn: document.getElementById('back-setup-btn'),
         routeStatus: document.getElementById('route-status'),
+        ruleNote: document.getElementById('rule-note'),
+        timeGroup: document.getElementById('time-group'),
+        timeVal: document.getElementById('time-val'),
+        goalBox: document.getElementById('goal-box'),
+        goalDist: document.getElementById('goal-dist'),
+        goalArrow: document.getElementById('goal-arrow'),
+        goalBearing: document.getElementById('goal-bearing'),
+        goalPicker: document.getElementById('goal-picker'),
+        pickerText: document.getElementById('picker-text'),
+        pickerCancelBtn: document.getElementById('picker-cancel-btn'),
+        pickerStartBtn: document.getElementById('picker-start-btn'),
+        statTimeLabel: document.getElementById('stat-time-label'),
+        resTimeLabel: document.getElementById('res-time-label'),
       };
 
       // ==========================================
@@ -1285,6 +1519,124 @@
         el.catchVal.textContent = config.catchRadius;
       });
 
+      // Game rule selection
+      const RULE_NOTES = {
+        free: '好きなだけ逃げ続けるモード。終了ボタンで記録を確認。',
+        goal: 'スタート後に地図をタップしてゴールを決定。捕まらずにゴールへたどり着けばクリア。',
+        time: '制限時間まで捕まらずに逃げ切ればクリア。',
+      };
+      document.querySelectorAll('.rule-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.rule-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          config.rule = btn.dataset.rule;
+          el.ruleNote.textContent = RULE_NOTES[config.rule];
+          el.timeGroup.classList.toggle('hidden-block', config.rule !== 'time');
+        });
+      });
+      document.querySelectorAll('.time-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          config.timeLimitMin = parseInt(btn.dataset.min, 10);
+          el.timeVal.textContent = config.timeLimitMin;
+        });
+      });
+
+      // Goal marker
+      const GOAL_RADIUS = 20;      // meters: reaching this close counts as goal
+      const GOAL_MIN_DIST = 50;    // goal must be at least this far from the start
+      let goalMarker = null;
+      let goalCircle = null;
+      const goalIcon = L.divIcon({
+        className: '',
+        html: '<div class="goal-marker">🏁</div>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+
+      function drawGoal() {
+        if (!state.goal) return;
+        const ll = [state.goal.lat, state.goal.lng];
+        if (!goalMarker) {
+          goalMarker = L.marker(ll, { icon: goalIcon, zIndexOffset: 300 }).addTo(map);
+          goalCircle = L.circle(ll, {
+            radius: GOAL_RADIUS,
+            color: '#00e676',
+            weight: 2,
+            fillColor: '#00e676',
+            fillOpacity: 0.18,
+          }).addTo(map);
+        } else {
+          goalMarker.setLatLng(ll);
+          goalCircle.setLatLng(ll);
+        }
+      }
+
+      function removeGoalLayers() {
+        if (goalMarker) { map.removeLayer(goalMarker); goalMarker = null; }
+        if (goalCircle) { map.removeLayer(goalCircle); goalCircle = null; }
+      }
+
+      function updatePickerUI() {
+        if (!state.goal) {
+          el.pickerText.innerHTML = `地図をタップしてゴールを置いてください（現在地から${GOAL_MIN_DIST}m以上）。`;
+          el.pickerStartBtn.disabled = true;
+          return;
+        }
+        const d = haversineMeters(state.pickStart, state.goal);
+        const dTxt = d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(2)} km`;
+        if (d < GOAL_MIN_DIST) {
+          el.pickerText.innerHTML = `現在地から <b>${dTxt}</b>。近すぎます。${GOAL_MIN_DIST}m以上離れた場所をタップしてください。`;
+          el.pickerStartBtn.disabled = true;
+        } else {
+          el.pickerText.innerHTML = `現在地からゴールまで直線 <b>${dTxt}</b>。別の場所をタップすると置き直せます。`;
+          el.pickerStartBtn.disabled = false;
+        }
+      }
+
+      function enterGoalPicking(startPos, startWatch) {
+        state.picking = true;
+        state.pickStart = { ...startPos };
+        state.pickStartWatch = startWatch;
+        clearMapEntities();
+        playerMarker = L.marker([startPos.lat, startPos.lng], { icon: playerIcon, zIndexOffset: 500 }).addTo(map);
+        el.setupScreen.classList.add('hidden');
+        el.resultSheet.classList.add('hidden');
+        el.hud.classList.add('hidden');
+        el.goalPicker.classList.remove('hidden');
+        if (state.goal) {
+          drawGoal();
+          map.fitBounds(L.latLngBounds([[startPos.lat, startPos.lng], [state.goal.lat, state.goal.lng]]),
+            { paddingTopLeft: [40, 40], paddingBottomRight: [40, 200], maxZoom: 17 });
+        } else {
+          map.setView([startPos.lat, startPos.lng], 16, { animate: false });
+        }
+        updatePickerUI();
+      }
+
+      map.on('click', e => {
+        if (!state.picking) return;
+        state.goal = { lat: e.latlng.lat, lng: e.latlng.lng };
+        drawGoal();
+        updatePickerUI();
+      });
+
+      el.pickerStartBtn.addEventListener('click', () => {
+        if (!state.picking || !state.goal) return;
+        state.picking = false;
+        el.goalPicker.classList.add('hidden');
+        initGameWorld(state.pickStart);
+        if (state.pickStartWatch) startGpsWatch();
+      });
+
+      el.pickerCancelBtn.addEventListener('click', () => {
+        state.picking = false;
+        el.goalPicker.classList.add('hidden');
+        clearMapEntities();
+        el.setupScreen.classList.remove('hidden');
+      });
+
       // HUD buttons
       el.themeBtn.addEventListener('click', () => {
         state.darkMap = !state.darkMap;
@@ -1317,7 +1669,7 @@
       });
 
       el.endRunBtn.addEventListener('click', () => {
-        finishGame(false);
+        finishGame('quit');
       });
 
       el.retryBtn.addEventListener('click', () => {
@@ -1539,18 +1891,50 @@
         } else {
           el.joystickWrap.classList.add('hidden');
           el.virtualHint.classList.add('hidden');
+          if (state.pendingGpsError) showGpsError(state.pendingGpsError);
+          else el.gpsErrorBanner.classList.add('hidden');
         }
+
+        // Rule-specific HUD
+        if (config.rule === 'goal' && state.goal) {
+          drawGoal();
+          el.goalBox.classList.remove('hidden');
+        } else {
+          removeGoalLayers();
+          el.goalBox.classList.add('hidden');
+        }
+        el.statTimeLabel.textContent = config.rule === 'time' ? '残り時間' : '生存時間';
 
         if (state.rafId) cancelAnimationFrame(state.rafId);
         state.rafId = requestAnimationFrame(gameLoop);
       }
 
+      function startGpsWatch() {
+        stopGpsWatch();
+        state.watchId = navigator.geolocation.watchPosition(
+          onRealGpsPosition,
+          err => showGpsError(describeGeoError(err)),
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+        );
+      }
+
+      // Goal rule: pick the goal first; other rules: start immediately
+      function beginRound(startPos, startWatch) {
+        if (config.rule === 'goal') {
+          enterGoalPicking(startPos, startWatch);
+        } else {
+          initGameWorld(startPos);
+          if (startWatch) startGpsWatch();
+        }
+      }
+
       function startGameFlow() {
         audio.unlock();
+        state.pendingGpsError = null;
 
         if (config.mode === 'virtual') {
           const startPos = state.playerPos || { ...DEFAULT_POS };
-          initGameWorld(startPos);
+          beginRound(startPos, false);
           return;
         }
 
@@ -1558,8 +1942,8 @@
         if (!navigator.geolocation) {
           el.gpsDot.className = 'status-dot err';
           el.gpsStatusText.textContent = 'このブラウザはGPSに対応していません';
-          initGameWorld({ ...DEFAULT_POS });
-          showGpsError('このブラウザはGPSに対応していません');
+          state.pendingGpsError = 'このブラウザはGPSに対応していません';
+          beginRound({ ...DEFAULT_POS }, false);
           return;
         }
 
@@ -1576,14 +1960,7 @@
             el.gpsStatusText.textContent = 'GPSロック完了';
 
             const startPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            initGameWorld(startPos);
-
-            stopGpsWatch();
-            state.watchId = navigator.geolocation.watchPosition(
-              onRealGpsPosition,
-              err => showGpsError(describeGeoError(err)),
-              { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
-            );
+            beginRound(startPos, true);
           },
           err => {
             el.startBtn.disabled = false;
@@ -1592,8 +1969,8 @@
             el.gpsDot.className = 'status-dot err';
             el.gpsStatusText.textContent = msg;
             // Launch map anyway with clear switch banner so user is never stuck
-            initGameWorld({ ...DEFAULT_POS });
-            showGpsError(msg);
+            state.pendingGpsError = msg;
+            beginRound({ ...DEFAULT_POS }, false);
           },
           { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
         );
@@ -1818,22 +2195,46 @@
 
         audio.tick(nowMs, minDist, config.catchRadius);
 
+        // Goal guidance
+        if (config.rule === 'goal' && state.goal) {
+          const gd = haversineMeters(state.playerPos, state.goal);
+          el.goalDist.textContent = gd < 1000 ? Math.round(gd) : (gd / 1000).toFixed(2) + 'k';
+          const gb = bearingDegrees(state.playerPos, state.goal);
+          el.goalArrow.style.transform = `rotate(${Math.round(gb)}deg)`;
+          el.goalBearing.textContent = bearingLabel(gb);
+        }
+
         // Update workout stats
-        el.statTime.textContent = formatTime(state.elapsedSec);
+        const limitSec = config.timeLimitMin * 60;
+        el.statTime.textContent = config.rule === 'time'
+          ? formatTime(Math.ceil(limitSec - state.elapsedSec))
+          : formatTime(state.elapsedSec);
         el.statDist.textContent = `${(state.totalDistMeters / 1000).toFixed(2)} km`;
         el.statSpeed.textContent = `${state.currentSpeedKmh.toFixed(1)} km/h`;
         el.statKcal.textContent = `${estimateCalories(state.totalDistMeters, state.elapsedSec)} kcal`;
 
         // Check capture
         if (minDist <= config.catchRadius) {
-          finishGame(true);
+          finishGame('caught');
+          return;
+        }
+
+        // Clear conditions
+        if (config.rule === 'goal' && state.goal && haversineMeters(state.playerPos, state.goal) <= GOAL_RADIUS) {
+          finishGame('goal');
+          return;
+        }
+        if (config.rule === 'time' && state.elapsedSec >= limitSec) {
+          state.elapsedSec = limitSec;
+          finishGame('survived');
           return;
         }
 
         state.rafId = requestAnimationFrame(gameLoop);
       }
 
-      function finishGame(caught) {
+      function finishGame(outcome) {
+        const caught = outcome === 'caught';
         state.running = false;
         state.gameId++;
         el.routeStatus.classList.add('hidden');
@@ -1856,16 +2257,30 @@
           hunterLayers[idx].polyline.setLatLngs(h.path);
         });
 
+        el.goalBox.classList.add('hidden');
         if (caught) {
           audio.playCaught();
           el.resultBadge.className = 'result-badge caught';
           el.resultBadge.textContent = 'CAPTURED';
           el.resultTitle.textContent = 'ハンターに捕獲された！';
-        } else {
+        } else if (outcome === 'goal') {
+          el.resultBadge.className = 'result-badge escaped';
+          el.resultBadge.textContent = 'GOAL!';
+          el.resultTitle.textContent = 'ゴール到達！逃げ切り成功';
+        } else if (outcome === 'survived') {
+          el.resultBadge.className = 'result-badge escaped';
+          el.resultBadge.textContent = 'TIME UP — ESCAPED';
+          el.resultTitle.textContent = `${config.timeLimitMin}分間 逃げ切った！`;
+        } else if (config.rule === 'free') {
           el.resultBadge.className = 'result-badge escaped';
           el.resultBadge.textContent = 'RUN COMPLETED';
           el.resultTitle.textContent = '逃走完了・ワークアウト終了';
+        } else {
+          el.resultBadge.className = 'result-badge caught';
+          el.resultBadge.textContent = 'RETIRED';
+          el.resultTitle.textContent = 'リタイア';
         }
+        el.resTimeLabel.textContent = outcome === 'goal' ? 'ゴールタイム' : '生存時間';
 
         const distKm = state.totalDistMeters / 1000;
         const avgKmh = state.elapsedSec > 1 ? distKm / (state.elapsedSec / 3600) : 0;
@@ -1878,6 +2293,7 @@
         // Zoom map to fit full chase route!
         const allPoints = [...state.playerPath];
         state.hunters.forEach(h => allPoints.push(...h.path));
+        if (config.rule === 'goal' && state.goal) allPoints.push([state.goal.lat, state.goal.lng]);
         if (allPoints.length >= 2) {
           const bounds = L.latLngBounds(allPoints);
           map.fitBounds(bounds, { paddingTopLeft: [30, 30], paddingBottomRight: [30, 290], maxZoom: 17 });
