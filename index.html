@@ -520,6 +520,21 @@
       color: #fff;
     }
 
+    #route-status {
+      align-self: flex-start;
+      pointer-events: none;
+      background: rgba(180, 83, 9, 0.92);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    #route-status.hidden {
+      display: none !important;
+    }
+
     #gps-error-banner.hidden {
       display: none !important;
     }
@@ -851,6 +866,8 @@
         </div>
       </div>
 
+      <div id="route-status" class="hidden">道路データを取得できないため直線で追跡中</div>
+
       <div id="gps-error-banner" class="hidden">
         <span id="gps-error-msg">GPSを取得できません</span>
         <button type="button" id="switch-virtual-btn" class="banner-switch-btn">仮想移動へ切替</button>
@@ -1107,6 +1124,7 @@
         currentSpeedKmh: 0,
         speedSamples: [],
         rafId: null,
+        gameId: 0,
         lastFrameMs: 0,
       };
 
@@ -1161,6 +1179,7 @@
         resKcal: document.getElementById('res-kcal'),
         retryBtn: document.getElementById('retry-btn'),
         backSetupBtn: document.getElementById('back-setup-btn'),
+        routeStatus: document.getElementById('route-status'),
       };
 
       // ==========================================
@@ -1448,6 +1467,7 @@
         state.startTimeMs = performance.now();
         state.lastFrameMs = state.startTimeMs;
         state.hunters = [];
+        state.gameId++;
 
         // Player marker & trail
         playerMarker = L.marker([startPos.lat, startPos.lng], { icon: playerIcon, zIndexOffset: 500 }).addTo(map);
@@ -1492,6 +1512,14 @@
             pos: hPos,
             path: hPath,
             lastPathRecordMs: state.startTimeMs,
+            route: null,        // [{lat,lng}, ...] road path from OSRM
+            routeCum: null,     // cumulative meters along route
+            routeIdx: 0,        // next vertex to walk to
+            routeTarget: null,  // player position used for the current route
+            routePending: false,
+            routeFailed: false,
+            nextRouteMs: 0,
+            snapped: false,
           });
           hunterLayers.push({ marker, circle, polyline });
         }
@@ -1573,6 +1601,115 @@
 
       el.startBtn.addEventListener('click', startGameFlow);
 
+      // ==========================================
+      // Road routing (OSRM foot profile, no API key)
+      // ==========================================
+      const ROUTE_URL = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/';
+      const ROUTE_MIN_GAP_MS = 1100;   // global spacing between requests (be polite to the free server)
+      const ROUTE_REFRESH_MS = 4000;   // min time between reroutes for one hunter
+      const ROUTE_RETRY_MS = 8000;     // wait after a failed request
+      const ROUTE_REROUTE_M = 12;      // reroute when the player moved this far from the route target
+      let lastRouteRequestMs = -Infinity;
+
+      function requestRoute(h, nowMs) {
+        const gameId = state.gameId;
+        const target = { ...state.playerPos };
+        h.routePending = true;
+        lastRouteRequestMs = nowMs;
+        const coords = `${h.pos.lng.toFixed(6)},${h.pos.lat.toFixed(6)};${target.lng.toFixed(6)},${target.lat.toFixed(6)}`;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        fetch(`${ROUTE_URL}${coords}?overview=full&geometries=geojson`, { signal: ctrl.signal })
+          .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+          .then(data => {
+            if (gameId !== state.gameId || !state.running) return;
+            if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) throw new Error('no route');
+            const pts = data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+            if (pts.length < 1) throw new Error('empty route');
+            // First route: put the hunter on the road network (it may have spawned inside a building / river)
+            if (!h.snapped) {
+              h.snapped = true;
+              h.pos = { ...pts[0] };
+              h.path.push([h.pos.lat, h.pos.lng]);
+            }
+            // Skip vertices the hunter has effectively already passed
+            let idx = 0;
+            while (idx + 1 < pts.length && haversineMeters(h.pos, pts[idx + 1]) <= haversineMeters(pts[idx], pts[idx + 1])) {
+              idx++;
+              if (idx > 6) break;
+            }
+            const cum = [0];
+            for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversineMeters(pts[i - 1], pts[i]));
+            h.route = pts;
+            h.routeCum = cum;
+            h.routeIdx = idx;
+            h.routeTarget = target;
+            h.routeFailed = false;
+            h.nextRouteMs = performance.now() + ROUTE_REFRESH_MS;
+          })
+          .catch(() => {
+            if (gameId !== state.gameId) return;
+            h.routeFailed = true;
+            h.nextRouteMs = performance.now() + ROUTE_RETRY_MS;
+          })
+          .finally(() => {
+            clearTimeout(timer);
+            if (gameId === state.gameId) h.routePending = false;
+          });
+      }
+
+      function maybeReroute(nowMs) {
+        if (nowMs - lastRouteRequestMs < ROUTE_MIN_GAP_MS) return;
+        // Pick the most urgent hunter that is due
+        let best = null;
+        let bestScore = -Infinity;
+        state.hunters.forEach(h => {
+          if (h.routePending || nowMs < h.nextRouteMs) return;
+          const exhausted = h.route && h.routeIdx >= h.route.length;
+          const drift = h.routeTarget ? haversineMeters(h.routeTarget, state.playerPos) : Infinity;
+          if (h.route && !exhausted && drift < ROUTE_REROUTE_M) return;
+          const score = (h.route ? 0 : 1e6) + drift;
+          if (score > bestScore) { bestScore = score; best = h; }
+        });
+        if (best) requestRoute(best, nowMs);
+      }
+
+      // Move a hunter `step` meters: along its road route if it has one, otherwise straight.
+      function advanceHunter(h, step) {
+        if (!h.route) {
+          // Waiting for the first route: stand still rather than cut through buildings
+          if (!h.routeFailed) return;
+          h.pos = moveTowards(h.pos, state.playerPos, step);
+          return;
+        }
+        while (step > 0 && h.routeIdx < h.route.length) {
+          const target = h.route[h.routeIdx];
+          const d = haversineMeters(h.pos, target);
+          if (d <= step) {
+            h.pos = { ...target };
+            step -= d;
+            h.routeIdx++;
+          } else {
+            h.pos = moveTowards(h.pos, target, step);
+            step = 0;
+          }
+        }
+        // Route finished: last few meters from the road to the player
+        if (step > 0) h.pos = moveTowards(h.pos, state.playerPos, step);
+      }
+
+      // Distance the hunter still has to travel to reach the player
+      function hunterTravelDistance(h) {
+        if (!h.route) return haversineMeters(h.pos, state.playerPos);
+        const last = h.route.length - 1;
+        if (h.routeIdx > last) return haversineMeters(h.pos, state.playerPos);
+        return (
+          haversineMeters(h.pos, h.route[h.routeIdx]) +
+          (h.routeCum[last] - h.routeCum[h.routeIdx]) +
+          haversineMeters(h.route[last], state.playerPos)
+        );
+      }
+
       function updateVirtualPlayer(dt) {
         let vx = joy.dx;
         let vy = joy.dy;
@@ -1631,13 +1768,16 @@
           updateVirtualPlayer(dt);
         }
 
-        // Move hunters toward player
+        maybeReroute(nowMs);
+        el.routeStatus.classList.toggle('hidden', !state.hunters.some(h => h.routeFailed));
+
+        // Move hunters toward player (along roads)
         const hunterStep = (config.hunterSpeedKmh / 3.6) * dt;
         let minDist = Infinity;
         let nearestHunter = null;
 
         state.hunters.forEach((h, idx) => {
-          h.pos = moveTowards(h.pos, state.playerPos, hunterStep);
+          advanceHunter(h, hunterStep);
           const layer = hunterLayers[idx];
           layer.marker.setLatLng([h.pos.lat, h.pos.lng]);
           layer.circle.setLatLng([h.pos.lat, h.pos.lng]);
@@ -1648,7 +1788,7 @@
             layer.polyline.setLatLngs(h.path);
           }
 
-          const d = haversineMeters(state.playerPos, h.pos);
+          const d = hunterTravelDistance(h);
           if (d < minDist) {
             minDist = d;
             nearestHunter = h;
@@ -1695,6 +1835,8 @@
 
       function finishGame(caught) {
         state.running = false;
+        state.gameId++;
+        el.routeStatus.classList.add('hidden');
         stopGpsWatch();
         if (state.rafId) {
           cancelAnimationFrame(state.rafId);
